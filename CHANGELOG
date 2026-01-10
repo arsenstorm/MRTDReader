@@ -1,3 +1,9 @@
+V3.0.0 (Fork by Arsen Shkrumelyak)
+   Forked from AndyQ/NFCPassportReader (https://github.com/AndyQ/NFCPassportReader)
+   Restructured source directory from Sources/NFCPassportReader/ to src/
+   Removed example app and tests
+   Removed CocoaPods support (Swift Package Manager only)
+
 V2.3.0
    Added fix for OpenSSL 3.3 breaking SOD X509 certificate verification - thanks @SteveDove for reporting and testing
    Added ability to provide a custom AA Challenge key for supporting backend AA challenges and eliminating replay attacks - thanks @Premeide

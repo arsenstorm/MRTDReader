@@ -8,7 +8,7 @@ These are used to verify both Document Signing certificates and Security Object 
 It can accept either the ICOA PDK master list file in LDIF format (which is a collection of master lists from validated countries), or a single Country masterlist file in Cryptographic Message Syntax (CMS) format.
 
 # Where can I get a master list from?
-ICAO makes their master lists available "freely available online to any person or State who wishes to download it. However, the process of downloading is manual and cannot be automated" (https://www.icao.int/Security/FAL/PKD/BVRT/Pages/Access.aspx) 
+ICAO makes their master lists available "freely available online to any person or State who wishes to download it. However, the process of downloading is manual and cannot be automated" (https://www2023.icao.int/Security/FAL/PKD/BVRT/Pages/Access.aspx) 
 
 The master lists can be downloaded from: https://download.pkd.icao.int (previously was https://pkddownloadsg.icao.int but this seems to be unavailable now)
 
