@@ -16,8 +16,7 @@ class SOD : DataGroup {
         try super.init(data)
         self.pkcs7CertificateData = body
     }
-    
-    @MainActor
+
     deinit {
         if ( pubKey != nil ) {
             EVP_PKEY_free(pubKey);

@@ -13,7 +13,6 @@ public class DataGroup15: DataGroup {
 
     public override var datagroupType: DataGroupId { .DG15 }
 
-    @MainActor
     deinit {
         if let key = ecdsaPublicKey {
             EVP_PKEY_free(key)

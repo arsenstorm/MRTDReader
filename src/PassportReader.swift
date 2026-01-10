@@ -14,6 +14,11 @@ public struct PassportReadingConfiguration {
     /// MRZ key derived from passport data (document number + date of birth + expiry date)
     public let mrzKey: String
     
+    /// Data groups to read. If nil or empty, reads all available groups.
+    /// Specified groups are intersected with what's available on the passport.
+    /// DG3 and DG4 are always excluded (require Extended Access Control).
+    public let dataGroups: Set<DataGroupId>?
+    
     /// Optional challenge for Active Authentication (random if not provided)
     public let aaChallenge: [UInt8]?
     
@@ -31,12 +36,14 @@ public struct PassportReadingConfiguration {
     
     public init(
         mrzKey: String,
+        dataGroups: Set<DataGroupId>? = nil,
         aaChallenge: [UInt8]? = nil,
         displayMessageHandler: ((NFCViewDisplayMessage) -> String?)? = nil,
         masterListURL: URL? = nil,
         useOpenSSLForPassiveAuth: Bool = false
     ) {
         self.mrzKey = mrzKey
+        self.dataGroups = dataGroups
         self.aaChallenge = aaChallenge
         self.displayMessageHandler = displayMessageHandler
         self.masterListURL = masterListURL
@@ -499,20 +506,28 @@ extension PassportReader {
     }
     
     private func buildDataGroupReadingList(from com: COM) -> [DataGroupId] {
-        var result = [DataGroupId]()
+        // 1. Get available groups from COM (excluding COM itself)
+        var available = com.dataGroupsPresent
+            .compactMap { DataGroupId.getIDFromName(name: $0) }
+            .filter { $0 != .COM }
+        
+        // 2. Always exclude DG3/DG4 (require Extended Access Control)
+        available.removeAll { $0 == .DG3 || $0 == .DG4 }
+        
+        // 3. If specific groups requested, intersect with available
+        var result: [DataGroupId]
+        if let requested = configuration?.dataGroups, !requested.isEmpty {
+            result = available.filter { requested.contains($0) }
+        } else {
+            result = available
+        }
+        
+        // 4. Remove duplicates while preserving order
         var seen = Set<DataGroupId>()
+        result = result.filter { seen.insert($0).inserted }
         
-        // Add data groups from COM
-        for id in com.dataGroupsPresent.compactMap({ DataGroupId.getIDFromName(name: $0) }) where id != .COM {
-            if seen.insert(id).inserted {
-                result.append(id)
-            }
-        }
-        
-        // Ensure SOD is read first for passive authentication
-        if let sodIndex = result.firstIndex(of: .SOD) {
-            result.remove(at: sodIndex)
-        }
+        // 5. Ensure SOD is read first (for passive authentication)
+        result.removeAll { $0 == .SOD }
         result.insert(.SOD, at: 0)
         
         return result
