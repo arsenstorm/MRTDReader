@@ -12,7 +12,7 @@ Pod::Spec.new do |spec|
 
   spec.source       = { :git => "https://github.com/AndyQ/NFCPassportReader.git", :tag => "#{spec.version}" }
 
-  spec.source_files  = "Sources/**/*.{swift}"
+  spec.source_files  = "src/**/*.{swift}"
 
   spec.swift_version = "5.4"
 
