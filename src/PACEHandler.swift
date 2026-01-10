@@ -42,6 +42,12 @@ public class PACEHandler {
     private var digestAlg = ""
     private var keyLength = -1
     
+    // CAM-specific: CA public key extracted from PACE response
+    private var camPublicKeyData: [UInt8]?
+    
+    /// Indicates whether Chip Authentication was implicitly performed via CAM
+    public private(set) var chipAuthenticationPerformed = false
+    
     // MARK: - Initialization
     
     public init(cardAccess: CardAccess, tagReader: TagReader) throws {
@@ -56,10 +62,20 @@ public class PACEHandler {
     
     // MARK: - Public API
     
-    public func doPACE(mrzKey: String) async throws {
+    /// Performs PACE protocol for secure channel establishment
+    /// - Parameters:
+    ///   - mrzKey: The MRZ key derived from document number, date of birth, and expiry date
+    ///   - dg14: Optional DataGroup14 for CAM (Chip Authentication Mapping) verification.
+    ///           Required if the passport uses CAM and you want to verify chip authenticity.
+    /// - Throws: NFCPassportReaderError if PACE fails
+    public func doPACE(mrzKey: String, dg14: DataGroup14? = nil) async throws {
         guard isPACESupported else {
             throw NFCPassportReaderError.NotYetSupported("PACE not supported")
         }
+        
+        // Reset CAM state
+        camPublicKeyData = nil
+        chipAuthenticationPerformed = false
         
         Logger.pace.info("Performing PACE with \(self.paceInfo.getProtocolOIDString())")
         
@@ -90,6 +106,16 @@ public class PACEHandler {
         // Complete PACE and restart secure messaging
         try completePACE(ksEnc: encKey, ksMac: macKey)
         Logger.pace.debug("PACE SUCCESSFUL")
+        
+        // CAM verification: If using CAM and DG14 is provided, verify chip authentication
+        if mappingType == .CAM {
+            if let dg14 = dg14 {
+                try verifyChipAuthenticationMapping(dg14: dg14)
+            } else if camPublicKeyData != nil {
+                Logger.pace.warning("CAM: CA public key received but DG14 not provided for verification")
+                Logger.pace.warning("CAM: Chip authentication cannot be verified without DG14")
+            }
+        }
     }
     
     // MARK: - Parameter Initialization
@@ -156,7 +182,7 @@ public class PACEHandler {
             return try await performGenericMapping(passportNonce: passportNonce)
         case .IM:
             Logger.pace.debug("Using Integrated Mapping (IM)")
-            throw NFCPassportReaderError.PACEError("Step2", "IM not yet implemented")
+            return try await performIntegratedMapping(passportNonce: passportNonce)
         default:
             throw NFCPassportReaderError.PACEError("Step2", "Unsupported mapping type")
         }
@@ -201,6 +227,46 @@ public class PACEHandler {
             )
         } else {
             throw NFCPassportReaderError.PACEError("Step2GM", "Unsupported agreement algorithm")
+        }
+    }
+    
+    private func performIntegratedMapping(passportNonce: [UInt8]) async throws -> OpaquePointer {
+        // Create mapping key (generates random scalar internally)
+        let mappingKey = try paceInfo.createMappingKey()
+        defer { EVP_PKEY_free(mappingKey) }
+        
+        guard let pcdMappingPublicKey = OpenSSLUtils.getPublicKeyData(from: mappingKey) else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unable to get public key from mapping key")
+        }
+        Logger.pace.debug("PCD mapping public key (IM): \(pcdMappingPublicKey.hexString)")
+        
+        // Exchange mapping keys with passport (same as GM)
+        let step2Data = wrapDO(b: 0x81, arr: pcdMappingPublicKey)
+        let response = try await tagReader.sendGeneralAuthenticate(data: step2Data, isLast: false)
+        let piccMappingPublicKey = try unwrapDO(tag: 0x82, wrappedData: response.data)
+        Logger.pace.debug("PICC mapping public key (IM): \(piccMappingPublicKey.hexString)")
+        
+        // Perform Integrated Mapping based on algorithm
+        if agreementAlg == "DH" {
+            Logger.pace.debug("Performing DH Integrated Mapping")
+            return try DHKeyAgreement.performIntegratedMappingAgreement(
+                mappingKey: mappingKey,
+                passportPublicKeyData: piccMappingPublicKey,
+                nonce: passportNonce,
+                cipherAlg: cipherAlg,
+                keyLength: keyLength
+            )
+        } else if agreementAlg == "ECDH" {
+            Logger.pace.debug("Performing ECDH Integrated Mapping")
+            return try ECDHKeyAgreement.performIntegratedMappingAgreement(
+                mappingKey: mappingKey,
+                passportPublicKeyData: piccMappingPublicKey,
+                nonce: passportNonce,
+                cipherAlg: cipherAlg,
+                keyLength: keyLength
+            )
+        } else {
+            throw NFCPassportReaderError.PACEError("Step2IM", "Unsupported agreement algorithm")
         }
     }
     
@@ -282,12 +348,29 @@ public class PACEHandler {
         
         // Verify passport's authentication token
         let tlvResponse = TKBERTLVRecord.sequenceOfRecords(from: Data(response.data))!
-        if tlvResponse[0].tag != 0x86 {
-            Logger.pace.warning("Expected tag 0x86, found: \(String(format: "0x%02X", tlvResponse[0].tag))")
+        
+        var piccTokenData: [UInt8]?
+        
+        // Parse response TLV records
+        for record in tlvResponse {
+            switch record.tag {
+            case 0x86:
+                // Authentication token
+                piccTokenData = [UInt8](record.value)
+            case 0x87:
+                // CAM: Chip Authentication public key (only present in CAM)
+                camPublicKeyData = [UInt8](record.value)
+                Logger.pace.debug("CAM: Received CA public key: \(self.camPublicKeyData!.hexString)")
+            default:
+                Logger.pace.debug("Step4: Ignoring unknown tag \(String(format: "0x%02X", record.tag))")
+            }
+        }
+        
+        guard let piccToken = piccTokenData else {
+            throw NFCPassportReaderError.PACEError("Step4", "Missing authentication token (tag 0x86)")
         }
         
         let expectedPICCToken = try generateAuthenticationToken(publicKey: pcdKeyPair, macKey: macKey)
-        let piccToken = [UInt8](tlvResponse[0].value)
         
         Logger.pace.debug("Expected PICC token: \(expectedPICCToken.hexString)")
         Logger.pace.debug("Received PICC token: \(piccToken.hexString)")
@@ -305,6 +388,47 @@ public class PACEHandler {
     private func completePACE(ksEnc: [UInt8], ksMac: [UInt8]) throws {
         Logger.pace.info("Restarting secure messaging using \(self.cipherAlg) encryption")
         tagReader.secureMessaging = createSecureMessaging(cipherAlgorithm: cipherAlg, ksEnc: ksEnc, ksMac: ksMac)
+    }
+    
+    // MARK: - CAM Verification
+    
+    /// Verifies Chip Authentication Mapping by comparing the CA public key from PACE with DG14
+    /// - Parameter dg14: DataGroup14 containing the chip's public key info
+    /// - Throws: NFCPassportReaderError if verification fails
+    private func verifyChipAuthenticationMapping(dg14: DataGroup14) throws {
+        guard let camPublicKey = camPublicKeyData else {
+            throw NFCPassportReaderError.PACEError("CAM", "No CA public key received from chip")
+        }
+        
+        Logger.pace.debug("CAM: Verifying chip authentication...")
+        
+        // Find matching public key in DG14
+        var foundMatch = false
+        
+        for secInfo in dg14.securityInfos {
+            guard let capki = secInfo as? ChipAuthenticationPublicKeyInfo else {
+                continue
+            }
+            
+            // Get the public key data from DG14
+            guard let dg14PublicKeyData = OpenSSLUtils.getPublicKeyData(from: capki.pubKey) else {
+                Logger.pace.warning("CAM: Unable to extract public key data from DG14")
+                continue
+            }
+            
+            // Compare the public keys
+            if camPublicKey == dg14PublicKeyData {
+                Logger.pace.info("CAM: Chip authentication verified successfully (keyId: \(capki.keyId ?? 0))")
+                foundMatch = true
+                chipAuthenticationPerformed = true
+                break
+            }
+        }
+        
+        if !foundMatch {
+            Logger.pace.error("CAM: CA public key from PACE does not match any key in DG14")
+            throw NFCPassportReaderError.PACEError("CAM", "CA public key verification failed - no matching key in DG14")
+        }
     }
     
     // MARK: - Authentication Token
