@@ -1,3 +1,16 @@
+V4.0.0 (Breaking Change)
+   Renamed package from NFCPassportReader to MRTDReader to reflect support for all ICAO 9303 MRTDs
+   Renamed classes:
+      - NFCPassportModel → MRTDModel
+      - PassportReader → MRTDReader
+      - PassportReadingConfiguration → MRTDReaderConfiguration
+      - PassportReaderTrackingDelegate → MRTDReaderTrackingDelegate
+      - NFCPassportReaderError → MRTDReaderError
+      - NFCPassportLogging → MRTDLogging
+   Renamed logger category 'passportReader' → 'reader'
+   Type aliases provided for backwards compatibility (but deprecation warnings may appear in future)
+   Updated README with migration guide and document type support table
+
 V3.0.0 (Fork by Arsen Shkrumelyak)
    Forked from AndyQ/NFCPassportReader (https://github.com/AndyQ/NFCPassportReader)
    Restructured source directory from Sources/NFCPassportReader/ to src/

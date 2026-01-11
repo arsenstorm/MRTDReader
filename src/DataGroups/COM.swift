@@ -39,7 +39,7 @@ public class COM : DataGroup {
             DataGroupParser.tags.firstIndex(of: byte).map { DataGroupParser.dataGroupNames[$0] }
         }
         
-        Logger.passportReader.debug("DG Found - \(self.dataGroupsPresent)")
+        Logger.reader.debugIfEnabled("DG Found - \(self.dataGroupsPresent.count) data groups")
     }
     
     /// Parse ASCII version bytes into dotted version string

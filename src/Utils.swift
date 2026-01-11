@@ -206,24 +206,17 @@ public func desMAC(key: [UInt8], msg: [UInt8]) -> [UInt8] {
     let blockCount = msg.count / 8
     var y: [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0]
     
-    Logger.passportReader.debug("Calc mac")
+    Logger.reader.debugIfEnabled("Computing DES MAC over \(blockCount) blocks")
     for i in 0..<blockCount {
         let block = Array(msg[i * 8..<i * 8 + 8])
-        Logger.passportReader.debug("x\(i): \(binToHexRep(block))")
         y = DESEncrypt(key: Array(key[0..<8]), message: block, iv: y)
-        Logger.passportReader.debug("y\(i): \(binToHexRep(y))")
     }
-    
-    Logger.passportReader.debug("y: \(binToHexRep(y))")
-    Logger.passportReader.debug("bkey: \(binToHexRep(Array(key[8..<16])))")
-    Logger.passportReader.debug("akey: \(binToHexRep(Array(key[0..<8])))")
     
     let zeroIV: [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0]
     let b = DESDecrypt(key: Array(key[8..<16]), message: y, iv: zeroIV, options: UInt32(kCCOptionECBMode))
-    Logger.passportReader.debug("b: \(binToHexRep(b))")
     let a = DESEncrypt(key: Array(key[0..<8]), message: b, iv: zeroIV, options: UInt32(kCCOptionECBMode))
-    Logger.passportReader.debug("a: \(binToHexRep(a))")
     
+    Logger.reader.debugIfEnabled("DES MAC computed (\(a.count) bytes)")
     return a
 }
 

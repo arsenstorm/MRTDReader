@@ -1,5 +1,5 @@
 //
-//  NFCPassportModel.swift
+//  MRTDModel.swift
 //
 
 import Foundation
@@ -16,7 +16,7 @@ public enum PassportAuthenticationStatus {
 }
 
 @available(iOS 13, macOS 10.15, *)
-public class NFCPassportModel {
+public class MRTDModel {
     
     // MARK: - MRZ Data (from DG1)
     
@@ -206,7 +206,7 @@ public class NFCPassportModel {
                     let dgId = DataGroupId.from(name: key)
                     addDataGroup(dgId, dataGroup: dg)
                 } catch {
-                    Logger.passportReader.error("Failed to import Datagroup \(key): \(error)")
+                    Logger.reader.errorIfEnabled("Failed to import Datagroup \(key)")
                 }
             }
         }
@@ -288,7 +288,7 @@ public class NFCPassportModel {
         activeAuthenticationSignature = signature
         activeAuthenticationPassed = false
         
-        Logger.passportReader.debug("Active Authentication - challenge: \(challenge.hexString), signature: \(signature.hexString)")
+        Logger.reader.debugIfEnabled("Active Authentication - verifying challenge and signature")
         
         guard let dg15 = dataGroupsRead[.DG15] as? DataGroup15 else { return }
         
@@ -323,7 +323,7 @@ public class NFCPassportModel {
             }()
             
             guard !hashType.isEmpty else {
-                Logger.passportReader.error("Error identifying AA RSA message digest hash algorithm")
+                Logger.reader.errorIfEnabled("Error identifying AA RSA message digest hash algorithm")
                 return
             }
             
@@ -333,12 +333,12 @@ public class NFCPassportModel {
             
             if msgHash == digest {
                 activeAuthenticationPassed = true
-                Logger.passportReader.debug("Active Authentication (RSA) successful")
+                Logger.reader.debugIfEnabled("Active Authentication (RSA) successful")
             } else {
-                Logger.passportReader.error("AA RSA signature verification failed - hash mismatch")
+                Logger.reader.errorIfEnabled("AA RSA signature verification failed - hash mismatch")
             }
         } catch {
-            Logger.passportReader.error("Error verifying AA RSA signature: \(error)")
+            Logger.reader.errorIfEnabled("Error verifying AA RSA signature")
         }
     }
     
@@ -351,9 +351,9 @@ public class NFCPassportModel {
         
         if OpenSSLUtils.verifyECDSASignature(publicKey: ecdsaKey, signature: signature, data: challenge, digestType: digestType) {
             activeAuthenticationPassed = true
-            Logger.passportReader.debug("Active Authentication (ECDSA) successful")
+            Logger.reader.debugIfEnabled("Active Authentication (ECDSA) successful")
         } else {
-            Logger.passportReader.error("Error verifying AA ECDSA signature")
+            Logger.reader.errorIfEnabled("Error verifying AA ECDSA signature")
         }
     }
 
@@ -374,7 +374,7 @@ public class NFCPassportModel {
             throw error
         }
                 
-        Logger.passportReader.debug("Passport passed SOD Verification")
+        Logger.reader.debugIfEnabled("Passport passed SOD Verification")
         passportCorrectlySigned = true
     }
 
@@ -419,11 +419,11 @@ public class NFCPassportModel {
         }
         
         if !errors.isEmpty {
-            Logger.passportReader.error("HASH ERRORS - \(errors)")
+            Logger.reader.errorIfEnabled("Hash verification failed for one or more data groups")
             throw PassiveAuthenticationError.InvalidDataGroupHash(errors)
         }
         
-        Logger.passportReader.debug("Passport passed Datagroup Tampering check")
+        Logger.reader.debugIfEnabled("Passport passed Datagroup Tampering check")
         passportDataNotTampered = true
     }
     
@@ -463,7 +463,11 @@ public class NFCPassportModel {
             throw PassiveAuthenticationError.UnableToParseSODHashes("Unable to extract hashes")
         }
 
-        Logger.passportReader.debug("Parse SOD - Algo: \(sodHashAlgo), Hashes: \(sodHashes)")
+        Logger.reader.debugIfEnabled("Parse SOD - Algo: \(sodHashAlgo), DataGroups: \(sodHashes.keys.map { $0.name })")
         return (sodHashAlgo, sodHashes)
     }
 }
+
+// MARK: - Type Aliases for backwards compatibility
+@available(iOS 13, macOS 10.15, *)
+public typealias NFCPassportModel = MRTDModel

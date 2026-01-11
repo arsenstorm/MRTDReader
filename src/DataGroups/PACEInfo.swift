@@ -177,17 +177,17 @@ public class PACEInfo: SecurityInfo {
         
         switch try getKeyAgreementAlgorithm() {
         case "DH":
-            Logger.pace.debug("Generating DH mapping keys")
+            Logger.pace.debugIfEnabled("Generating DH mapping keys")
             let dhKey: OpaquePointer? = try {
                 switch try getParameterSpec() {
                 case 0:
-                    Logger.pace.debug("Using DH_get_1024_160")
+                    Logger.pace.debugIfEnabled("Using DH_get_1024_160")
                     return DH_get_1024_160()
                 case 1:
-                    Logger.pace.debug("Using DH_get_2048_224")
+                    Logger.pace.debugIfEnabled("Using DH_get_2048_224")
                     return DH_get_2048_224()
                 case 2:
-                    Logger.pace.debug("Using DH_get_2048_256")
+                    Logger.pace.debugIfEnabled("Using DH_get_2048_256")
                     return DH_get_2048_256()
                 default:
                     return nil
@@ -204,7 +204,7 @@ public class PACEInfo: SecurityInfo {
             
         case "ECDH":
             let parameterSpec = try getParameterSpec()
-            Logger.pace.debug("Generating ECDH mapping keys from parameterSpec - \(parameterSpec)")
+            Logger.pace.debugIfEnabled("Generating ECDH mapping keys")
             guard let ecKey = EC_KEY_new_by_curve_name(parameterSpec) else {
                 throw NFCPassportReaderError.InvalidDataPassed("Unable to create EC mapping key")
             }

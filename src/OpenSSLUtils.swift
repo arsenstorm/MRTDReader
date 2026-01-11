@@ -176,7 +176,7 @@ public class OpenSSLUtils {
                     // Ignoring this
                     ret = 1
                 } else {
-                    Logger.openSSL.error("error \(cert_error) at \(X509_STORE_CTX_get_error_depth(ctx)) depth lookup:\(val)" )
+                    Logger.openSSL.errorIfEnabled("Certificate verification error \(cert_error) at depth \(X509_STORE_CTX_get_error_depth(ctx))")
                 }
             }
             
@@ -257,7 +257,7 @@ public class OpenSSLUtils {
             throw OpenSSLError.VerifyAndReturnSODEncapsulatedData("CMS - Verification of P7 failed - unable to verify signature")
         }
         
-        Logger.openSSL.debug("Verification successful\n");
+        Logger.openSSL.debugIfEnabled("Verification successful");
         let len = BIO_ctrl(out, BIO_CTRL_PENDING, 0, nil)
         var buffer = [UInt8](repeating: 0, count: len)
         BIO_read(out, &buffer, Int32(len))
@@ -308,7 +308,7 @@ public class OpenSSLUtils {
             let rc = ASN1_parse_dump(out, ptr.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count, 0, 0)
             if rc == 0 {
                 let str = OpenSSLUtils.getOpenSSLError()
-                Logger.openSSL.debug( "Failed to parse ASN1 Data - \(str)" )
+                Logger.openSSL.debugIfEnabled("Failed to parse ASN1 Data")
                 throw OpenSSLError.UnableToParseASN1("Failed to parse ASN1 Data - \(str)")
             }
             
@@ -566,7 +566,7 @@ public class OpenSSLUtils {
         CMAC_Update(ctx, message, message.count);
         CMAC_Final(ctx, &mac, &maclen);
         
-        Logger.openSSL.debug( "aesMac - mac - \(binToHexRep(mac))" )
+        Logger.openSSL.debugIfEnabled("aesMac - computed MAC (\(maclen) bytes)")
         
         return [UInt8](mac[0..<maclen])
     }
@@ -688,37 +688,37 @@ public class OpenSSLUtils {
             secret = [UInt8](repeating: 0, count: Int(DH_size(dh)))
             let len = DH_compute_key(&secret, bn, dh);
             
-            Logger.openSSL.debug( "OpenSSLUtils.computeSharedSecret - DH secret len - \(len) - \(secret)" )
+            Logger.openSSL.debugIfEnabled("OpenSSLUtils.computeSharedSecret - DH secret len - \(len)")
         } else {
             let ctx = EVP_PKEY_CTX_new(privateKeyPair, nil)
             defer{ EVP_PKEY_CTX_free(ctx) }
             
             if EVP_PKEY_derive_init(ctx) != 1 {
                 // error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
+                Logger.openSSL.errorIfEnabled("EVP_PKEY_derive_init failed")
             }
             
             // Set the public key
             if EVP_PKEY_derive_set_peer( ctx, publicKey ) != 1 {
                 // error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
+                Logger.openSSL.errorIfEnabled("EVP_PKEY_derive_set_peer failed")
             }
             
             // get buffer length needed for shared secret
             var keyLen = 0
             if EVP_PKEY_derive(ctx, nil, &keyLen) != 1 {
                 // Error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
+                Logger.openSSL.errorIfEnabled("EVP_PKEY_derive (get length) failed")
             }
             
             // Derive the shared secret
             secret = [UInt8](repeating: 0, count: keyLen)
             if EVP_PKEY_derive(ctx, &secret, &keyLen) != 1 {
                 // Error
-                Logger.openSSL.error( "ERROR - \(OpenSSLUtils.getOpenSSLError())" )
+                Logger.openSSL.errorIfEnabled("EVP_PKEY_derive failed")
             }
             
-            Logger.openSSL.debug( "OpenSSLUtils.computeSharedSecret - secret len - \(keyLen), secret - \(secret)" )
+            Logger.openSSL.debugIfEnabled("OpenSSLUtils.computeSharedSecret - secret len - \(keyLen)")
 
         }
         return secret

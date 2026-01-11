@@ -65,7 +65,7 @@ private func performCrypto(
     }
     
     guard cryptStatus == kCCSuccess else {
-        Logger.passportReader.error("\(errorLabel) Error: \(cryptStatus)")
+        Logger.reader.errorIfEnabled("\(errorLabel) Error: status \(cryptStatus)")
         return []
     }
     

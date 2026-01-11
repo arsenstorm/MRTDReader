@@ -4,10 +4,10 @@
 
 import Foundation
 
-// MARK: - NFCPassportReaderError
+// MARK: - MRTDReaderError
 
 @available(iOS 13, macOS 10.15, *)
-public enum NFCPassportReaderError: Error {
+public enum MRTDReaderError: Error {
     case ResponseError(String, UInt8, UInt8)
     case InvalidResponse(dataGroupId: DataGroupId, expectedTag: Int, actualTag: Int)
     case UnexpectedError
@@ -61,11 +61,15 @@ public enum NFCPassportReaderError: Error {
 }
 
 @available(iOS 13, macOS 10.15, *)
-extension NFCPassportReaderError: LocalizedError {
+extension MRTDReaderError: LocalizedError {
     public var errorDescription: String? {
-        NSLocalizedString(value, comment: "NFCPassportReaderError")
+        NSLocalizedString(value, comment: "MRTDReaderError")
     }
 }
+
+/// Type alias for backwards compatibility
+@available(iOS 13, macOS 10.15, *)
+public typealias NFCPassportReaderError = MRTDReaderError
 
 // MARK: - OpenSSLError
 

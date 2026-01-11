@@ -49,7 +49,7 @@ class ChipAuthenticationHandler {
     // MARK: - Public API
     
     func doChipAuthentication() async throws {
-        Logger.chipAuth.info("Performing Chip Authentication - \(self.chipAuthPublicKeyInfos.count) public key(s) found")
+        Logger.chipAuth.infoIfEnabled("Performing Chip Authentication - \(self.chipAuthPublicKeyInfos.count) public key(s) found")
         
         guard isChipAuthenticationSupported else {
             throw NFCPassportReaderError.NotYetSupported("ChipAuthentication not supported")
@@ -74,10 +74,10 @@ class ChipAuthenticationHandler {
         if let chipAuthInfo = chipAuthInfos[keyId ?? 0] {
             chipAuthOID = chipAuthInfo.oid
         } else if let inferredOID = Self.oidInference[publicKeyInfo.oid] {
-            Logger.chipAuth.warning("No ChipAuthenticationInfo - inferring OID as \(inferredOID)")
+            Logger.chipAuth.warningIfEnabled("No ChipAuthenticationInfo - inferring OID")
             chipAuthOID = inferredOID
         } else {
-            Logger.chipAuth.warning("Unsupported ChipAuthenticationPublicKeyInfo public key OID: \(publicKeyInfo.oid)")
+            Logger.chipAuth.warningIfEnabled("Unsupported ChipAuthenticationPublicKeyInfo public key OID")
             return false
         }
         
@@ -101,7 +101,7 @@ class ChipAuthenticationHandler {
         
         // Send public key to passport
         try await sendPublicKey(oid: oid, keyId: keyId, pcdPublicKey: keyPair)
-        Logger.chipAuth.debug("Public key successfully sent to passport")
+        Logger.chipAuth.debugIfEnabled("Public key successfully sent to passport")
         
         // Compute shared secret using ECDH/DH
         let sharedSecret = OpenSSLUtils.computeSharedSecret(privateKeyPair: keyPair, publicKey: publicKey)
@@ -161,7 +161,7 @@ class ChipAuthenticationHandler {
         let ksEnc = try smskg.deriveKey(keySeed: sharedSecret, cipherAlgName: cipherAlg, keyLength: keyLength, mode: .ENC_MODE)
         let ksMac = try smskg.deriveKey(keySeed: sharedSecret, cipherAlgName: cipherAlg, keyLength: keyLength, mode: .MAC_MODE)
         
-        Logger.chipAuth.info("Restarting secure messaging using \(cipherAlg) encryption")
+        Logger.chipAuth.infoIfEnabled("Restarting secure messaging using \(cipherAlg) encryption")
         tagReader?.secureMessaging = createSecureMessaging(cipherAlgorithm: cipherAlg, ksEnc: ksEnc, ksMac: ksMac)
     }
 }

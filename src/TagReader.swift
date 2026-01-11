@@ -202,7 +202,7 @@ public class TagReader {
         var amountRead = lengthBytes + 1
         var data = [UInt8](headerResp.data[..<amountRead])
         
-        Logger.tagReader.debug("Bytes to read: \(remaining)")
+        Logger.tagReader.debugIfEnabled("Bytes to read: \(remaining)")
         
         // Read remaining data in chunks
         while remaining > 0 {
@@ -210,7 +210,7 @@ public class TagReader {
             reportProgress(amountRead: amountRead, total: amountRead + remaining)
             
             let offset = intToBin(amountRead, pad: 4)
-            Logger.tagReader.debug("Reading \(readAmount) bytes at offset \(amountRead)")
+            Logger.tagReader.debugIfEnabled("Reading \(readAmount) bytes at offset \(amountRead)")
             
             let cmd = NFCISO7816APDU(
                 instructionClass: ISO7816.InstructionClass.standard,
@@ -222,7 +222,7 @@ public class TagReader {
             )
             let resp = try await send(cmd: cmd)
             
-            Logger.tagReader.debug("Received \(resp.data.count) bytes")
+            Logger.tagReader.debugIfEnabled("Received \(resp.data.count) bytes")
             data += resp.data
             remaining -= resp.data.count
             amountRead += resp.data.count
@@ -248,7 +248,7 @@ public class TagReader {
     }
     
     func selectPassportApplication() async throws -> ResponseAPDU {
-        Logger.tagReader.debug("Selecting eMRTD application")
+        Logger.tagReader.debugIfEnabled("Selecting eMRTD application")
         let cmd = NFCISO7816APDU(
             instructionClass: ISO7816.InstructionClass.standard,
             instructionCode: ISO7816.Instruction.select,
@@ -269,16 +269,16 @@ public class TagReader {
     // MARK: - Core Send
     
     func send(cmd: NFCISO7816APDU, useExtendedMode: Bool = false) async throws -> ResponseAPDU {
-        Logger.tagReader.debug("Sending: \(cmd)")
+        Logger.tagReader.debugIfEnabled("Sending APDU command")
         
         var toSend = cmd
         if let sm = secureMessaging {
             toSend = try sm.protect(apdu: cmd, useExtendedMode: useExtendedMode)
-            Logger.tagReader.debug("[SM] \(toSend)")
+            Logger.tagReader.debugIfEnabled("[SM] Protected APDU")
         }
         
         var (data, sw1, sw2) = try await tag.sendCommand(apdu: toSend)
-        Logger.tagReader.debug("Received \(data.count) bytes")
+        Logger.tagReader.debugIfEnabled("Received \(data.count) bytes")
         
         // Handle chained responses (GET RESPONSE)
         while sw1 == 0x61 {
@@ -291,7 +291,7 @@ public class TagReader {
                 expectedResponseLength: Int(sw2)
             )
             let (nextSegment, nextSw1, nextSw2) = try await tag.sendCommand(apdu: getResponseCmd)
-            Logger.tagReader.debug("Chained read: +\(nextSegment.count) bytes, \(nextSw2) remaining")
+            Logger.tagReader.debugIfEnabled("Chained read: +\(nextSegment.count) bytes, \(nextSw2) remaining")
             data += nextSegment
             sw1 = nextSw1
             sw2 = nextSw2
@@ -301,15 +301,15 @@ public class TagReader {
         
         if let sm = secureMessaging {
             response = try sm.unprotect(rapdu: response)
-            Logger.tagReader.debug("[SM unprotected] \(response.data.hexString), SW: \(String(format: "%02X%02X", response.sw1, response.sw2))")
+            Logger.tagReader.debugIfEnabled("[SM unprotected] \(response.data.count) bytes, SW: \(String(format: "%02X%02X", response.sw1, response.sw2))")
         } else {
-            Logger.tagReader.debug("[Unprotected] \(response.data.hexString), SW: \(String(format: "%02X%02X", response.sw1, response.sw2))")
+            Logger.tagReader.debugIfEnabled("[Unprotected] \(response.data.count) bytes, SW: \(String(format: "%02X%02X", response.sw1, response.sw2))")
         }
         
         // Check for errors
         guard response.isSuccess else {
             let statusWord = ISO7816StatusWord(sw1: response.sw1, sw2: response.sw2)
-            Logger.tagReader.error("Error: \(statusWord.errorDescription)")
+            Logger.tagReader.errorIfEnabled("Error: \(statusWord.errorDescription)")
             
             if response.sw1 == 0x63 && response.sw2 == 0x00 {
                 throw NFCPassportReaderError.InvalidMRZKey

@@ -9,7 +9,7 @@ public enum NFCViewDisplayMessage {
     case requestPresentPassport
     case authenticatingWithPassport(Int)
     case readingDataGroupProgress(DataGroupId, Int)
-    case error(NFCPassportReaderError)
+    case error(MRTDReaderError)
     case activeAuthentication
     case successfulRead
 }

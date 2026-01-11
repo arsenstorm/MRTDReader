@@ -52,9 +52,9 @@ public class SecureMessaging {
     
     /// Protects an APDU following the ICAO Doc 9303 specification
     func protect(apdu: NFCISO7816APDU, useExtendedMode: Bool = false) throws -> NFCISO7816APDU {
-        Logger.secureMessaging.debug("SSC: \(self.ssc.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Protecting APDU")
         incrementSSC()
-        Logger.secureMessaging.debug("SSC incremented: \(self.ssc.hexString)")
+        Logger.secureMessaging.debugIfEnabled("SSC incremented")
         
         let paddedSSC = paddedSendSequenceCounter
         let maskedHeader = maskClassAndPad(apdu: apdu)
@@ -65,14 +65,14 @@ public class SecureMessaging {
         
         // Concatenate for MAC calculation
         let dataToMAC = maskedHeader + encryptedDataObject + expectedLengthObject
-        Logger.secureMessaging.debug("M: \(dataToMAC.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Data to MAC: \(dataToMAC.count) bytes")
         
         // Compute MAC
         let macInput = pad(paddedSSC + dataToMAC, blockSize: algorithm.blockSize)
-        Logger.secureMessaging.debug("N (padded): \(macInput.hexString)")
+        Logger.secureMessaging.debugIfEnabled("MAC input: \(macInput.count) bytes")
         
         let mac = computeMAC(macInput)
-        Logger.secureMessaging.debug("CC: \(mac.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Computed MAC (\(mac.count) bytes)")
         
         let macObject = buildMACObject(mac: mac)
         
@@ -96,10 +96,10 @@ public class SecureMessaging {
         
         incrementSSC()
         let paddedSSC = paddedSendSequenceCounter
-        Logger.secureMessaging.debug("SSC incremented: \(self.ssc.hexString)")
+        Logger.secureMessaging.debugIfEnabled("SSC incremented")
         
         let responseData = rapdu.data + [rapdu.sw1, rapdu.sw2]
-        Logger.secureMessaging.debug("RAPDU: \(responseData.hexString)")
+        Logger.secureMessaging.debugIfEnabled("RAPDU: \(responseData.count) bytes")
         
         var offset = 0
         var encryptedDataObject = [UInt8]()
@@ -124,7 +124,7 @@ public class SecureMessaging {
         
         // Parse DO'99 (status word)
         guard responseData.count >= offset + 4 else {
-            Logger.secureMessaging.error("Response too short for status")
+            Logger.secureMessaging.errorIfEnabled("Response too short for status")
             let sw1 = responseData.count > offset + 2 ? responseData[offset + 2] : 0
             let sw2 = responseData.count > offset + 3 ? responseData[offset + 3] : 0
             return ResponseAPDU(data: [], sw1: sw1, sw2: sw2)
@@ -147,10 +147,10 @@ public class SecureMessaging {
             
             // Verify MAC
             let macInput = pad(paddedSSC + encryptedDataObject + statusObject, blockSize: algorithm.blockSize)
-            Logger.secureMessaging.debug("K (padded): \(macInput.hexString)")
+            Logger.secureMessaging.debugIfEnabled("MAC verification input: \(macInput.count) bytes")
             
             let expectedMAC = computeMAC(macInput)
-            Logger.secureMessaging.debug("Expected CC: \(expectedMAC.hexString)")
+            Logger.secureMessaging.debugIfEnabled("Computed expected MAC (\(expectedMAC.count) bytes)")
             
             guard receivedMAC == expectedMAC else {
                 throw NFCPassportReaderError.InvalidResponseChecksum
@@ -163,10 +163,10 @@ public class SecureMessaging {
         var decryptedData = [UInt8]()
         if !encryptedContent.isEmpty {
             decryptedData = unpad(decryptData(encryptedContent))
-            Logger.secureMessaging.debug("Decrypted data: \(decryptedData.hexString)")
+            Logger.secureMessaging.debugIfEnabled("Decrypted data: \(decryptedData.count) bytes")
         }
         
-        Logger.secureMessaging.debug("Unprotected APDU: [\(decryptedData.hexString)] \(String(format: "%02X %02X", sw1, sw2))")
+        Logger.secureMessaging.debugIfEnabled("Unprotected APDU: \(decryptedData.count) bytes, SW: \(String(format: "%02X %02X", sw1, sw2))")
         return ResponseAPDU(data: decryptedData, sw1: sw1, sw2: sw2)
     }
     
@@ -186,7 +186,7 @@ public class SecureMessaging {
     private func maskClassAndPad(apdu: NFCISO7816APDU) -> [UInt8] {
         let masked = [ISO7816.InstructionClass.secureMessaging, apdu.instructionCode, apdu.p1Parameter, apdu.p2Parameter]
         let padded = pad(masked, blockSize: algorithm.blockSize)
-        Logger.secureMessaging.debug("Masked header: \(padded.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Masked header: \(padded.count) bytes")
         return padded
     }
     
@@ -197,7 +197,7 @@ public class SecureMessaging {
         let paddingIndicator: UInt8 = 0x01
         let encryptedContent = paddingIndicator.bytes + encryptData(apdu)
         let result = try [ISO7816.SMTag.encryptedData] + toAsn1Length(encryptedContent.count) + encryptedContent
-        Logger.secureMessaging.debug("DO'87: \(result.hexString)")
+        Logger.secureMessaging.debugIfEnabled("DO'87: \(result.count) bytes")
         return result
     }
     
@@ -212,14 +212,14 @@ public class SecureMessaging {
         }
         
         let result = try [ISO7816.SMTag.expectedLength] + toAsn1Length(encodedLength.count) + encodedLength
-        Logger.secureMessaging.debug("DO'97: \(result.hexString)")
+        Logger.secureMessaging.debugIfEnabled("DO'97: \(result.count) bytes")
         return result
     }
     
     /// Builds DO'8E - MAC object
     private func buildMACObject(mac: [UInt8]) -> [UInt8] {
         let result = [ISO7816.SMTag.cryptographicChecksum, UInt8(mac.count)] + mac
-        Logger.secureMessaging.debug("DO'8E: \(result.hexString)")
+        Logger.secureMessaging.debugIfEnabled("DO'8E: \(result.count) bytes")
         return result
     }
     
@@ -238,8 +238,8 @@ public class SecureMessaging {
             encrypted = AESEncrypt(key: ksenc, message: paddedData, iv: iv)
         }
         
-        Logger.secureMessaging.debug("Padded data: \(paddedData.hexString)")
-        Logger.secureMessaging.debug("Encrypted: \(encrypted.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Padded data: \(paddedData.count) bytes")
+        Logger.secureMessaging.debugIfEnabled("Encrypted: \(encrypted.count) bytes")
         return encrypted
     }
     
@@ -291,7 +291,7 @@ public class SecureMessaging {
         protectedAPDU += encryptedData + expectedLength + mac
         protectedAPDU += useExtended ? [0x00, 0x00] : [0x00]
         
-        Logger.secureMessaging.debug("Protected APDU: \(protectedAPDU.hexString)")
+        Logger.secureMessaging.debugIfEnabled("Protected APDU: \(protectedAPDU.count) bytes")
         
         guard let apdu = NFCISO7816APDU(data: Data(protectedAPDU)) else {
             throw NFCPassportReaderError.UnableToProtectAPDU

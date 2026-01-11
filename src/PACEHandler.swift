@@ -77,7 +77,7 @@ public class PACEHandler {
         camPublicKeyData = nil
         chipAuthenticationPerformed = false
         
-        Logger.pace.info("Performing PACE with \(self.paceInfo.getProtocolOIDString())")
+        Logger.pace.infoIfEnabled("Performing PACE with \(self.paceInfo.getProtocolOIDString())")
         
         // Initialize protocol parameters
         try initializeParameters(mrzKey: mrzKey)
@@ -105,15 +105,15 @@ public class PACEHandler {
         
         // Complete PACE and restart secure messaging
         try completePACE(ksEnc: encKey, ksMac: macKey)
-        Logger.pace.debug("PACE SUCCESSFUL")
+        Logger.pace.debugIfEnabled("PACE SUCCESSFUL")
         
         // CAM verification: If using CAM and DG14 is provided, verify chip authentication
         if mappingType == .CAM {
             if let dg14 = dg14 {
                 try verifyChipAuthenticationMapping(dg14: dg14)
             } else if camPublicKeyData != nil {
-                Logger.pace.warning("CAM: CA public key received but DG14 not provided for verification")
-                Logger.pace.warning("CAM: Chip authentication cannot be verified without DG14")
+                Logger.pace.warningIfEnabled("CAM: CA public key received but DG14 not provided for verification")
+                Logger.pace.warningIfEnabled("CAM: Chip authentication cannot be verified without DG14")
             }
         }
     }
@@ -134,28 +134,27 @@ public class PACEHandler {
     }
     
     private func logParameters() {
-        Logger.pace.debug("PACE parameters:")
-        Logger.pace.debug("  OID: \(self.paceOID)")
-        Logger.pace.debug("  parameterSpec: \(self.parameterSpec)")
-        Logger.pace.debug("  mappingType: \(self.mappingType!.description)")
-        Logger.pace.debug("  agreementAlg: \(self.agreementAlg)")
-        Logger.pace.debug("  cipherAlg: \(self.cipherAlg)")
-        Logger.pace.debug("  digestAlg: \(self.digestAlg)")
-        Logger.pace.debug("  keyLength: \(self.keyLength)")
-        Logger.pace.debug("  paceKey: \(self.paceKey.hexString)")
+        Logger.pace.debugIfEnabled("PACE parameters:")
+        Logger.pace.debugIfEnabled("  OID: \(self.paceOID)")
+        Logger.pace.debugIfEnabled("  parameterSpec: \(self.parameterSpec)")
+        Logger.pace.debugIfEnabled("  mappingType: \(self.mappingType!.description)")
+        Logger.pace.debugIfEnabled("  agreementAlg: \(self.agreementAlg)")
+        Logger.pace.debugIfEnabled("  cipherAlg: \(self.cipherAlg)")
+        Logger.pace.debugIfEnabled("  digestAlg: \(self.digestAlg)")
+        Logger.pace.debugIfEnabled("  keyLength: \(self.keyLength)")
     }
     
     // MARK: - Step 1: Get Encrypted Nonce
     
     private func performStep1GetNonce() async throws -> [UInt8] {
-        Logger.pace.debug("Step 1: Getting encrypted nonce...")
+        Logger.pace.debugIfEnabled("Step 1: Getting encrypted nonce...")
         
         let response = try await tagReader.sendGeneralAuthenticate(data: [], isLast: false)
         let encryptedNonce = try unwrapDO(tag: 0x80, wrappedData: response.data)
-        Logger.pace.debug("Encrypted nonce: \(encryptedNonce.hexString)")
+        Logger.pace.debugIfEnabled("Received encrypted nonce (\(encryptedNonce.count) bytes)")
         
         let decryptedNonce = decryptNonce(encryptedNonce)
-        Logger.pace.debug("Decrypted nonce: \(decryptedNonce.hexString)")
+        Logger.pace.debugIfEnabled("Decrypted nonce successfully")
         
         return decryptedNonce
     }
@@ -174,14 +173,14 @@ public class PACEHandler {
     // MARK: - Step 2: Compute Ephemeral Parameters via Mapping
     
     private func performStep2Mapping(passportNonce: [UInt8]) async throws -> OpaquePointer {
-        Logger.pace.debug("Step 2: Computing ephemeral parameters...")
+        Logger.pace.debugIfEnabled("Step 2: Computing ephemeral parameters...")
         
         switch mappingType {
         case .GM, .CAM:
-            Logger.pace.debug("Using Generic Mapping (GM)")
+            Logger.pace.debugIfEnabled("Using Generic Mapping (GM)")
             return try await performGenericMapping(passportNonce: passportNonce)
         case .IM:
-            Logger.pace.debug("Using Integrated Mapping (IM)")
+            Logger.pace.debugIfEnabled("Using Integrated Mapping (IM)")
             return try await performIntegratedMapping(passportNonce: passportNonce)
         default:
             throw NFCPassportReaderError.PACEError("Step2", "Unsupported mapping type")
@@ -196,13 +195,13 @@ public class PACEHandler {
         guard let pcdMappingPublicKey = OpenSSLUtils.getPublicKeyData(from: mappingKey) else {
             throw NFCPassportReaderError.PACEError("Step2GM", "Unable to get public key from mapping key")
         }
-        Logger.pace.debug("PCD mapping public key: \(pcdMappingPublicKey.hexString)")
+        Logger.pace.debugIfEnabled("Generated PCD mapping public key (\(pcdMappingPublicKey.count) bytes)")
         
         // Exchange mapping keys with passport
         let step2Data = wrapDO(b: 0x81, arr: pcdMappingPublicKey)
         let response = try await tagReader.sendGeneralAuthenticate(data: step2Data, isLast: false)
         let piccMappingPublicKey = try unwrapDO(tag: 0x82, wrappedData: response.data)
-        Logger.pace.debug("PICC mapping public key: \(piccMappingPublicKey.hexString)")
+        Logger.pace.debugIfEnabled("Received PICC mapping public key (\(piccMappingPublicKey.count) bytes)")
         
         // Convert nonce to BIGNUM
         guard let bnNonce = BN_bin2bn(passportNonce, Int32(passportNonce.count), nil) else {
@@ -212,14 +211,14 @@ public class PACEHandler {
         
         // Perform key agreement based on algorithm
         if agreementAlg == "DH" {
-            Logger.pace.debug("Performing DH mapping agreement")
+            Logger.pace.debugIfEnabled("Performing DH mapping agreement")
             return try DHKeyAgreement.performMappingAgreement(
                 mappingKey: mappingKey,
                 passportPublicKeyData: piccMappingPublicKey,
                 nonce: bnNonce
             )
         } else if agreementAlg == "ECDH" {
-            Logger.pace.debug("Performing ECDH mapping agreement")
+            Logger.pace.debugIfEnabled("Performing ECDH mapping agreement")
             return try ECDHKeyAgreement.performMappingAgreement(
                 mappingKey: mappingKey,
                 passportPublicKeyData: piccMappingPublicKey,
@@ -238,17 +237,17 @@ public class PACEHandler {
         guard let pcdMappingPublicKey = OpenSSLUtils.getPublicKeyData(from: mappingKey) else {
             throw NFCPassportReaderError.PACEError("Step2IM", "Unable to get public key from mapping key")
         }
-        Logger.pace.debug("PCD mapping public key (IM): \(pcdMappingPublicKey.hexString)")
+        Logger.pace.debugIfEnabled("Generated PCD mapping public key (IM, \(pcdMappingPublicKey.count) bytes)")
         
         // Exchange mapping keys with passport (same as GM)
         let step2Data = wrapDO(b: 0x81, arr: pcdMappingPublicKey)
         let response = try await tagReader.sendGeneralAuthenticate(data: step2Data, isLast: false)
         let piccMappingPublicKey = try unwrapDO(tag: 0x82, wrappedData: response.data)
-        Logger.pace.debug("PICC mapping public key (IM): \(piccMappingPublicKey.hexString)")
+        Logger.pace.debugIfEnabled("Received PICC mapping public key (IM, \(piccMappingPublicKey.count) bytes)")
         
         // Perform Integrated Mapping based on algorithm
         if agreementAlg == "DH" {
-            Logger.pace.debug("Performing DH Integrated Mapping")
+            Logger.pace.debugIfEnabled("Performing DH Integrated Mapping")
             return try DHKeyAgreement.performIntegratedMappingAgreement(
                 mappingKey: mappingKey,
                 passportPublicKeyData: piccMappingPublicKey,
@@ -257,7 +256,7 @@ public class PACEHandler {
                 keyLength: keyLength
             )
         } else if agreementAlg == "ECDH" {
-            Logger.pace.debug("Performing ECDH Integrated Mapping")
+            Logger.pace.debugIfEnabled("Performing ECDH Integrated Mapping")
             return try ECDHKeyAgreement.performIntegratedMappingAgreement(
                 mappingKey: mappingKey,
                 passportPublicKeyData: piccMappingPublicKey,
@@ -273,7 +272,7 @@ public class PACEHandler {
     // MARK: - Step 3: Key Exchange
     
     private func performStep3KeyExchange(ephemeralParams: OpaquePointer) async throws -> (OpaquePointer, OpaquePointer) {
-        Logger.pace.debug("Step 3: Key exchange...")
+        Logger.pace.debugIfEnabled("Step 3: Key exchange...")
         
         // Generate ephemeral key pair
         let ephemeralKeyPair = try generateEphemeralKeyPair(from: ephemeralParams)
@@ -282,7 +281,7 @@ public class PACEHandler {
             EVP_PKEY_free(ephemeralKeyPair)
             throw NFCPassportReaderError.PACEError("Step3", "Unable to get public key from ephemeral key pair")
         }
-        Logger.pace.debug("PCD ephemeral public key: \(publicKey.hexString)")
+        Logger.pace.debugIfEnabled("Generated PCD ephemeral public key (\(publicKey.count) bytes)")
         
         // Exchange public keys
         let step3Data = wrapDO(b: 0x83, arr: publicKey)
@@ -293,7 +292,7 @@ public class PACEHandler {
             EVP_PKEY_free(ephemeralKeyPair)
             throw NFCPassportReaderError.PACEError("Step3", "Unable to decode passport's ephemeral key")
         }
-        Logger.pace.debug("PICC ephemeral public key: \(passportPublicKeyData.hexString)")
+        Logger.pace.debugIfEnabled("Received PICC ephemeral public key (\(passportPublicKeyData.count) bytes)")
         
         return (ephemeralKeyPair, passportPublicKey)
     }
@@ -316,7 +315,7 @@ public class PACEHandler {
             throw NFCPassportReaderError.PACEError("Step3", "Unable to create ephemeral key pair")
         }
         
-        Logger.pace.debug("Generated ephemeral key pair")
+        Logger.pace.debugIfEnabled("Generated ephemeral key pair")
         return ephemeralKeyPair
     }
     
@@ -326,22 +325,21 @@ public class PACEHandler {
         pcdKeyPair: OpaquePointer,
         passportPublicKey: OpaquePointer
     ) async throws -> ([UInt8], [UInt8]) {
-        Logger.pace.debug("Step 4: Key agreement...")
+        Logger.pace.debugIfEnabled("Step 4: Key agreement...")
         
         // Compute shared secret
         let sharedSecret = OpenSSLUtils.computeSharedSecret(privateKeyPair: pcdKeyPair, publicKey: passportPublicKey)
-        Logger.pace.debug("Shared secret: \(sharedSecret.hexString)")
+        Logger.pace.debugIfEnabled("Computed shared secret (\(sharedSecret.count) bytes)")
         
         // Derive session keys
         let gen = SecureMessagingSessionKeyGenerator()
         let encKey = try gen.deriveKey(keySeed: sharedSecret, cipherAlgName: cipherAlg, keyLength: keyLength, mode: .ENC_MODE)
         let macKey = try gen.deriveKey(keySeed: sharedSecret, cipherAlgName: cipherAlg, keyLength: keyLength, mode: .MAC_MODE)
-        Logger.pace.debug("encKey: \(encKey.hexString)")
-        Logger.pace.debug("macKey: \(macKey.hexString)")
+        Logger.pace.debugIfEnabled("Derived session keys (enc: \(encKey.count) bytes, mac: \(macKey.count) bytes)")
         
         // Generate and send authentication token
         let pcdAuthToken = try generateAuthenticationToken(publicKey: passportPublicKey, macKey: macKey)
-        Logger.pace.debug("PCD auth token: \(pcdAuthToken.hexString)")
+        Logger.pace.debugIfEnabled("Generated PCD auth token (\(pcdAuthToken.count) bytes)")
         
         let step4Data = wrapDO(b: 0x85, arr: pcdAuthToken)
         let response = try await tagReader.sendGeneralAuthenticate(data: step4Data, isLast: true)
@@ -360,9 +358,9 @@ public class PACEHandler {
             case 0x87:
                 // CAM: Chip Authentication public key (only present in CAM)
                 camPublicKeyData = [UInt8](record.value)
-                Logger.pace.debug("CAM: Received CA public key: \(self.camPublicKeyData!.hexString)")
+                Logger.pace.debugIfEnabled("CAM: Received CA public key (\(self.camPublicKeyData!.count) bytes)")
             default:
-                Logger.pace.debug("Step4: Ignoring unknown tag \(String(format: "0x%02X", record.tag))")
+                Logger.pace.debugIfEnabled("Step4: Ignoring unknown tag \(String(format: "0x%02X", record.tag))")
             }
         }
         
@@ -372,21 +370,20 @@ public class PACEHandler {
         
         let expectedPICCToken = try generateAuthenticationToken(publicKey: pcdKeyPair, macKey: macKey)
         
-        Logger.pace.debug("Expected PICC token: \(expectedPICCToken.hexString)")
-        Logger.pace.debug("Received PICC token: \(piccToken.hexString)")
+        Logger.pace.debugIfEnabled("Verifying PICC auth token")
         
         guard piccToken == expectedPICCToken else {
             throw NFCPassportReaderError.PACEError("Step4", "PICC token mismatch")
         }
         
-        Logger.pace.debug("Auth token verified!")
+        Logger.pace.debugIfEnabled("Auth token verified!")
         return (encKey, macKey)
     }
     
     // MARK: - PACE Completion
     
     private func completePACE(ksEnc: [UInt8], ksMac: [UInt8]) throws {
-        Logger.pace.info("Restarting secure messaging using \(self.cipherAlg) encryption")
+        Logger.pace.infoIfEnabled("Restarting secure messaging using \(self.cipherAlg) encryption")
         tagReader.secureMessaging = createSecureMessaging(cipherAlgorithm: cipherAlg, ksEnc: ksEnc, ksMac: ksMac)
     }
     
@@ -400,7 +397,7 @@ public class PACEHandler {
             throw NFCPassportReaderError.PACEError("CAM", "No CA public key received from chip")
         }
         
-        Logger.pace.debug("CAM: Verifying chip authentication...")
+        Logger.pace.debugIfEnabled("CAM: Verifying chip authentication...")
         
         // Find matching public key in DG14
         var foundMatch = false
@@ -412,13 +409,13 @@ public class PACEHandler {
             
             // Get the public key data from DG14
             guard let dg14PublicKeyData = OpenSSLUtils.getPublicKeyData(from: capki.pubKey) else {
-                Logger.pace.warning("CAM: Unable to extract public key data from DG14")
+                Logger.pace.warningIfEnabled("CAM: Unable to extract public key data from DG14")
                 continue
             }
             
             // Compare the public keys
             if camPublicKey == dg14PublicKeyData {
-                Logger.pace.info("CAM: Chip authentication verified successfully (keyId: \(capki.keyId ?? 0))")
+                Logger.pace.infoIfEnabled("CAM: Chip authentication verified successfully")
                 foundMatch = true
                 chipAuthenticationPerformed = true
                 break
@@ -426,7 +423,7 @@ public class PACEHandler {
         }
         
         if !foundMatch {
-            Logger.pace.error("CAM: CA public key from PACE does not match any key in DG14")
+            Logger.pace.errorIfEnabled("CAM: CA public key verification failed")
             throw NFCPassportReaderError.PACEError("CAM", "CA public key verification failed - no matching key in DG14")
         }
     }
@@ -440,7 +437,7 @@ public class PACEHandler {
             encodedPublicKey = pad(encodedPublicKey, blockSize: 8)
         }
         
-        Logger.pace.debug("Encoded public key: \(encodedPublicKey.hexString)")
+        Logger.pace.debugIfEnabled("Encoded public key for auth token (\(encodedPublicKey.count) bytes)")
         
         let algorithm: SecureMessagingSupportedAlgorithms = cipherAlg == "DESede" ? .DES : .AES
         let maccedData = mac(algoName: algorithm, key: macKey, msg: encodedPublicKey)
