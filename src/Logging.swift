@@ -32,21 +32,21 @@ extension Logger {
     
     /// Logs a debug message only if logging is enabled.
     /// Uses @autoclosure to avoid computing the message when logging is disabled.
-    func debugIfEnabled(_ message: @autoclosure () -> String) {
+    func debugIfEnabled(_ message: @autoclosure @escaping () -> String) {
         guard MRTDLogging.isEnabled else { return }
         let msg = message()
         self.debug("\(msg)")
     }
     
     /// Logs an info message only if logging is enabled.
-    func infoIfEnabled(_ message: @autoclosure () -> String) {
+    func infoIfEnabled(_ message: @autoclosure @escaping () -> String) {
         guard MRTDLogging.isEnabled else { return }
         let msg = message()
         self.info("\(msg)")
     }
     
     /// Logs a warning message only if logging is enabled.
-    func warningIfEnabled(_ message: @autoclosure () -> String) {
+    func warningIfEnabled(_ message: @autoclosure @escaping () -> String) {
         guard MRTDLogging.isEnabled else { return }
         let msg = message()
         self.warning("\(msg)")
@@ -54,7 +54,7 @@ extension Logger {
     
     /// Logs an error message only if logging is enabled.
     /// Note: Error messages should never contain sensitive data.
-    func errorIfEnabled(_ message: @autoclosure () -> String) {
+    func errorIfEnabled(_ message: @autoclosure @escaping () -> String) {
         guard MRTDLogging.isEnabled else { return }
         let msg = message()
         self.error("\(msg)")
