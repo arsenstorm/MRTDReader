@@ -13,7 +13,7 @@ import CryptoKit
 @available(iOS 15, *)
 private enum PACEKeyReference: UInt8 {
     case mrz = 0x01
-    case can = 0x02  // Not currently supported
+    case can = 0x02
     case pin = 0x03  // Not currently supported
     case puk = 0x04  // Not currently supported
 }
@@ -68,7 +68,7 @@ public class PACEHandler {
     ///   - dg14: Optional DataGroup14 for CAM (Chip Authentication Mapping) verification.
     ///           Required if the passport uses CAM and you want to verify chip authenticity.
     /// - Throws: NFCPassportReaderError if PACE fails
-    public func doPACE(mrzKey: String, dg14: DataGroup14? = nil) async throws {
+    public func doPACE(mrzKey: String, cardAccessNumber: String? = nil, dg14: DataGroup14? = nil) async throws {
         guard isPACESupported else {
             throw NFCPassportReaderError.NotYetSupported("PACE not supported")
         }
@@ -80,7 +80,7 @@ public class PACEHandler {
         Logger.pace.infoIfEnabled("Performing PACE with \(self.paceInfo.getProtocolOIDString())")
         
         // Initialize protocol parameters
-        try initializeParameters(mrzKey: mrzKey)
+        try initializeParameters(mrzKey: mrzKey, cardAccessNumber: cardAccessNumber)
         logParameters()
         
         // Start PACE protocol
@@ -120,7 +120,7 @@ public class PACEHandler {
     
     // MARK: - Parameter Initialization
     
-    private func initializeParameters(mrzKey: String) throws {
+    private func initializeParameters(mrzKey: String, cardAccessNumber: String?) throws {
         paceOID = paceInfo.getObjectIdentifier()
         parameterSpec = try paceInfo.getParameterSpec()
         mappingType = try paceInfo.getMappingType()
@@ -128,9 +128,14 @@ public class PACEHandler {
         cipherAlg = try paceInfo.getCipherAlgorithm()
         digestAlg = try paceInfo.getDigestAlgorithm()
         keyLength = try paceInfo.getKeyLength()
-        
-        paceKeyType = PACEKeyReference.mrz.rawValue
-        paceKey = try createPaceKey(from: mrzKey)
+
+        if let can = normalizeCAN(cardAccessNumber) {
+            paceKeyType = PACEKeyReference.can.rawValue
+            paceKey = try createPaceKey(from: can)
+        } else {
+            paceKeyType = PACEKeyReference.mrz.rawValue
+            paceKey = try createPaceKey(from: mrzKey)
+        }
     }
     
     private func logParameters() {
@@ -467,8 +472,8 @@ public class PACEHandler {
     
     // MARK: - PACE Key Derivation
     
-    private func createPaceKey(from mrzKey: String) throws -> [UInt8] {
-        let hash = calcSHA1Hash(Array(mrzKey.utf8))
+    private func createPaceKey(from keySeed: String) throws -> [UInt8] {
+        let hash = calcSHA1Hash(Array(keySeed.utf8))
         let smskg = SecureMessagingSessionKeyGenerator()
         return try smskg.deriveKey(
             keySeed: hash,
@@ -478,6 +483,13 @@ public class PACEHandler {
             mode: .PACE_MODE,
             paceKeyReference: paceKeyType
         )
+    }
+
+    private func normalizeCAN(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let digits = value.filter { $0 >= "0" && $0 <= "9" }
+        guard digits.count == 6 else { return nil }
+        return digits
     }
 }
 

@@ -13,6 +13,9 @@ import CoreNFC
 public struct MRTDReaderConfiguration {
     /// MRZ key derived from document data (document number + date of birth + expiry date)
     public let mrzKey: String
+
+    /// Optional Card Access Number (CAN) used for PACE when available.
+    public let cardAccessNumber: String?
     
     /// Data groups to read. If nil or empty, reads all available groups.
     /// Specified groups are intersected with what's available on the document.
@@ -41,6 +44,7 @@ public struct MRTDReaderConfiguration {
     
     public init(
         mrzKey: String,
+        cardAccessNumber: String? = nil,
         dataGroups: Set<DataGroupId>? = nil,
         aaChallenge: [UInt8]? = nil,
         displayMessageHandler: ((NFCViewDisplayMessage) -> String?)? = nil,
@@ -49,6 +53,7 @@ public struct MRTDReaderConfiguration {
         loggingEnabled: Bool = false
     ) {
         self.mrzKey = mrzKey
+        self.cardAccessNumber = cardAccessNumber
         self.dataGroups = dataGroups
         self.aaChallenge = aaChallenge
         self.displayMessageHandler = displayMessageHandler
@@ -433,7 +438,7 @@ extension MRTDReader {
             
             Logger.reader.infoIfEnabled("Starting PACE authentication")
             let paceHandler = try PACEHandler(cardAccess: cardAccess, tagReader: tagReader)
-            try await paceHandler.doPACE(mrzKey: config.mrzKey)
+            try await paceHandler.doPACE(mrzKey: config.mrzKey, cardAccessNumber: config.cardAccessNumber)
             
             document.PACEStatus = .success
             Logger.reader.debugIfEnabled("PACE succeeded")
