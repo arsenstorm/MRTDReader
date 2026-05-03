@@ -134,6 +134,7 @@ public class MRTDModel {
     public internal(set) var BACStatus: PassportAuthenticationStatus = .notDone
     public internal(set) var PACEStatus: PassportAuthenticationStatus = .notDone
     public internal(set) var chipAuthenticationStatus: PassportAuthenticationStatus = .notDone
+    public internal(set) var chipAuthenticationTranscript: ChipAuthenticationTranscript?
 
     // MARK: - Verification Status
     

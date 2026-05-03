@@ -587,6 +587,42 @@ public class OpenSSLUtils {
         return data
     }
 
+    /// Returns the raw private scalar of an EC or DH `EVP_PKEY` as bytes,
+    /// optionally left-padded with zeros so the result is exactly `paddedTo`
+    /// bytes long. Padding is required for callers that bind the scalar to a
+    /// fixed-width encoding (e.g. the TR-03110-3 CA-v2 transcript expects the
+    /// scalar to match the curve's coordinate width).
+    @available(iOS 13, macOS 10.15, *)
+    public static func getPrivateKeyData(from key: OpaquePointer, paddedTo: Int? = nil) -> [UInt8]? {
+        let keyType = EVP_PKEY_get_base_id(key)
+        var scalar: OpaquePointer?
+
+        if keyType == EVP_PKEY_DH || keyType == EVP_PKEY_DHX {
+            guard let dh = EVP_PKEY_get0_DH(key) else { return nil }
+            DH_get0_key(dh, nil, &scalar)
+        } else if keyType == EVP_PKEY_EC {
+            guard let ec = EVP_PKEY_get0_EC_KEY(key) else { return nil }
+            scalar = EC_KEY_get0_private_key(ec)
+        } else {
+            return nil
+        }
+
+        guard let bn = scalar else { return nil }
+        let nrBytes = Int((BN_num_bits(bn) + 7) / 8)
+        guard nrBytes > 0 else { return nil }
+
+        var data = [UInt8](repeating: 0, count: nrBytes)
+        _ = BN_bn2bin(bn, &data)
+
+        if let target = paddedTo {
+            if data.count > target { return nil }
+            if data.count < target {
+                data = [UInt8](repeating: 0, count: target - data.count) + data
+            }
+        }
+        return data
+    }
+
     @available(iOS 13, macOS 10.15, *)
     public static func getPublicKeyData(from key:OpaquePointer) -> [UInt8]? {
         var data : [UInt8] = []

@@ -569,6 +569,7 @@ extension MRTDReader {
         do {
             try await handler.doChipAuthentication()
             document.chipAuthenticationStatus = .success
+            document.chipAuthenticationTranscript = handler.latestTranscript
             Logger.reader.infoIfEnabled("Chip Authentication succeeded")
         } catch {
             Logger.reader.infoIfEnabled("Chip Authentication failed, re-establishing BAC")
